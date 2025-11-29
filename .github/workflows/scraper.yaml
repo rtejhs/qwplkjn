@@ -1,9 +1,9 @@
 name: News Scraper
 
 on:
-  # Run automatically every day at 8:00 AM UTC (2:00 PM Bangladesh Time)
+  # Run automatically every day at 6:00 AM Bangladesh Time
   schedule:
-    - cron: '0 8 * * *'  # Change this time as needed
+    - cron: '0 0 * * *'  # 6:00 AM Bangladesh Time (0:00 UTC)
   
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
