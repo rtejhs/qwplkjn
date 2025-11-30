@@ -1,21 +1,41 @@
 name: GitlabSync
 
 on:
-  - push
+  # Trigger after News Scraper completes
+  workflow_run:
+    workflows: ["News Scraper"]
+    types:
+      - completed
+    branches: [main]
+  
+  # Also trigger on any push to EdData folder (from your Daily Editorial App)
+  push:
+    paths:
+      - 'EdData/**'
+    branches: [main]
+  
+  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # Run if scraper succeeded OR if triggered by push/manual
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     name: Git Repo Sync
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - uses: wangchucheng/git-repo-sync@v0.1.0
+        ref: main
+    
+    - name: Sync to GitLab
+      uses: wangchucheng/git-repo-sync@v0.1.0
       with:
         # Such as https://gitlab.com/wangchucheng/git-repo-sync.git
         target-url: ${{ secrets.TARGET_URL }}
         # Such as wangchucheng
         target-username: ${{ secrets.TARGET_USERNAME }}
-          # You can store token in your project's 'Setting > Secrets' and reference the name here. Such as ${{ secrets.ACCESS\_TOKEN }}
+        # You can store token in your project's 'Setting > Secrets' and reference the name here. Such as ${{ secrets.ACCESS_TOKEN }}
         target-token: ${{ secrets.TARGET_TOKEN }}
