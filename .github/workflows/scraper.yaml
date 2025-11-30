@@ -3,7 +3,7 @@ name: News Scraper
 on:
   # Run automatically every day at 6:00 AM Bangladesh Time
   schedule:
-    - cron: '0 0 * * *'  # 6:00 AM Bangladesh Time (0:00 UTC)
+    - cron: '15 23 * * *'  # 5:15 AM Bangladesh Time (23:15 UTC previous day)
   
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
@@ -58,3 +58,4 @@ jobs:
         git config --local user.name "github-actions[bot]"
         git add -A
         git diff --quiet && git diff --staged --quiet || (git commit -m "Update scraped articles - $(date)" && git push)
+
