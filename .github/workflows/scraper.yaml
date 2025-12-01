@@ -4,6 +4,7 @@ on:
   # Run automatically every day at 6:00 AM Bangladesh Time
   schedule:
     - cron: '15 23 * * *'  # 5:15 AM Bangladesh Time (23:15 UTC previous day)
+    - cron: '0 5 * * *'  # 11:00 AM Bangladesh Time (5:00 AM UTC)
   
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
@@ -58,4 +59,5 @@ jobs:
         git config --local user.name "github-actions[bot]"
         git add -A
         git diff --quiet && git diff --staged --quiet || (git commit -m "Update scraped articles - $(date)" && git push)
+
 
