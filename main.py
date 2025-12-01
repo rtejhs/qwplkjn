@@ -4,7 +4,7 @@ import os
 import re
 import sys
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import pytz
 import requests
@@ -53,8 +53,50 @@ def get_soup(url):
     return soup
 
 
-def save_to_files(data: List[Article]):
-    """Save scraped data to JSON files in the repository"""
+def load_existing_data(file_path: str) -> Optional[List[dict]]:
+    """Load existing data from a JSON file"""
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                logging.info(f"Loaded {len(data)} existing articles from {file_path}")
+                return data
+        else:
+            logging.info(f"File {file_path} does not exist")
+            return None
+    except Exception as e:
+        logging.error(f"Failed to load existing data from {file_path}: {e}")
+        return None
+
+
+def should_update_file(new_data: List[Article], existing_data: Optional[List[dict]]) -> tuple[bool, str]:
+    """
+    Determine if file should be updated based on comparison
+    Returns: (should_update: bool, reason: str)
+    """
+    if existing_data is None:
+        return True, "File doesn't exist - will create new file"
+    
+    new_count = len(new_data)
+    existing_count = len(existing_data)
+    
+    if new_count > existing_count:
+        return True, f"New data has more articles ({new_count} vs {existing_count}) - will update"
+    elif new_count == existing_count:
+        # Check if content is different
+        new_links = set([article.link for article in new_data])
+        existing_links = set([item['link'] for item in existing_data])
+        
+        if new_links != existing_links:
+            return True, f"Same count ({new_count}) but different articles - will update"
+        else:
+            return False, f"Same articles ({new_count}) already exist - skipping update"
+    else:
+        return False, f"New data has fewer articles ({new_count} vs {existing_count}) - skipping update"
+
+
+def save_to_files(data: List[Article]) -> bool:
+    """Save scraped data to JSON files with smart checking"""
     if not data or len(data) == 0:
         logging.warning("No data to save")
         return False
@@ -64,33 +106,57 @@ def save_to_files(data: List[Article]):
     os.makedirs(data_dir, exist_ok=True)
     
     date = datetime.now(pytz.timezone('Asia/Dhaka')).strftime('%d-%m-%Y')
-    json_content = json.dumps([ob.to_dict() for ob in data], sort_keys=True, indent=4)
+    new_json_content = json.dumps([ob.to_dict() for ob in data], sort_keys=True, indent=4)
     
-    # Save to main article list
+    files_updated = False
+    
+    # Check and save main article list
     main_path = os.path.join(data_dir, "article_list.json")
-    try:
-        with open(main_path, 'w', encoding='utf-8') as f:
-            f.write(json_content)
-        logging.info(f"Saved {len(data)} articles to {main_path}")
-    except Exception as e:
-        logging.error(f"Failed to save main article list: {e}")
-        return False
+    existing_main_data = load_existing_data(main_path)
+    should_update_main, main_reason = should_update_file(data, existing_main_data)
     
-    # Save to date-specific file
+    logging.info(f"Main file check: {main_reason}")
+    
+    if should_update_main:
+        try:
+            with open(main_path, 'w', encoding='utf-8') as f:
+                f.write(new_json_content)
+            logging.info(f"✅ Updated {main_path} with {len(data)} articles")
+            files_updated = True
+        except Exception as e:
+            logging.error(f"❌ Failed to save main article list: {e}")
+            return False
+    else:
+        logging.info(f"⏭️  Skipped updating {main_path}")
+    
+    # Check and save date-specific file
     date_path = os.path.join(data_dir, f"{date}.json")
-    try:
-        with open(date_path, 'w', encoding='utf-8') as f:
-            f.write(json_content)
-        logging.info(f"Saved {len(data)} articles to {date_path}")
-    except Exception as e:
-        logging.error(f"Failed to save date-specific file: {e}")
-        return False
+    existing_date_data = load_existing_data(date_path)
+    should_update_date, date_reason = should_update_file(data, existing_date_data)
     
-    # Log what was scraped
-    newspapers = set([article.news_paper_name for article in data])
-    logging.info(f"Sources: {', '.join(newspapers)}")
+    logging.info(f"Date file ({date}.json) check: {date_reason}")
     
-    return True
+    if should_update_date:
+        try:
+            with open(date_path, 'w', encoding='utf-8') as f:
+                f.write(new_json_content)
+            logging.info(f"✅ Updated {date_path} with {len(data)} articles")
+            files_updated = True
+        except Exception as e:
+            logging.error(f"❌ Failed to save date-specific file: {e}")
+            return False
+    else:
+        logging.info(f"⏭️  Skipped updating {date_path}")
+    
+    # Log summary
+    if files_updated:
+        newspapers = set([article.news_paper_name for article in data])
+        logging.info(f"📰 Sources: {', '.join(newspapers)}")
+        logging.info(f"📊 Total articles: {len(data)}")
+    else:
+        logging.info("ℹ️  No files were updated (data is up to date)")
+    
+    return files_updated
 
 
 class NewsScraper:
@@ -446,9 +512,11 @@ def scrap_the_financial_express_data(url):
 
 
 def main():
-    """Main function for GitHub Actions"""
+    """Main function for GitHub Actions / GitLab CI"""
     logging.info("=" * 60)
     logging.info("Starting news scraper...")
+    current_date = datetime.now(pytz.timezone('Asia/Dhaka')).strftime('%d-%m-%Y')
+    logging.info(f"Current date: {current_date}")
     logging.info("=" * 60)
     
     data = []
@@ -499,11 +567,15 @@ def main():
     logging.info(f"Total articles scraped: {len(data)}")
     logging.info("=" * 60)
     
-    # Save to files in the repository
-    if save_to_files(data):
-        logging.info("Successfully saved all files")
+    # Save to files with smart checking
+    if len(data) > 0:
+        files_updated = save_to_files(data)
+        if files_updated:
+            logging.info("✅ Successfully saved/updated files")
+        else:
+            logging.info("ℹ️  No updates needed - data is already up to date")
     else:
-        logging.error("Failed to save files")
+        logging.error("❌ No articles scraped - nothing to save")
         sys.exit(1)
     
     logging.info("=" * 60)
