@@ -110,26 +110,7 @@ def save_to_files(data: List[Article]) -> bool:
     
     files_updated = False
     
-    # Check and save main article list
-    main_path = os.path.join(data_dir, "article_list.json")
-    existing_main_data = load_existing_data(main_path)
-    should_update_main, main_reason = should_update_file(data, existing_main_data)
-    
-    logging.info(f"Main file check: {main_reason}")
-    
-    if should_update_main:
-        try:
-            with open(main_path, 'w', encoding='utf-8') as f:
-                f.write(new_json_content)
-            logging.info(f"✅ Updated {main_path} with {len(data)} articles")
-            files_updated = True
-        except Exception as e:
-            logging.error(f"❌ Failed to save main article list: {e}")
-            return False
-    else:
-        logging.info(f"⏭️  Skipped updating {main_path}")
-    
-    # Check and save date-specific file
+    # Check and save date-specific file FIRST (this is the primary decision maker)
     date_path = os.path.join(data_dir, f"{date}.json")
     existing_date_data = load_existing_data(date_path)
     should_update_date, date_reason = should_update_file(data, existing_date_data)
@@ -137,6 +118,7 @@ def save_to_files(data: List[Article]) -> bool:
     logging.info(f"Date file ({date}.json) check: {date_reason}")
     
     if should_update_date:
+        # Update date-specific file
         try:
             with open(date_path, 'w', encoding='utf-8') as f:
                 f.write(new_json_content)
@@ -145,16 +127,25 @@ def save_to_files(data: List[Article]) -> bool:
         except Exception as e:
             logging.error(f"❌ Failed to save date-specific file: {e}")
             return False
-    else:
-        logging.info(f"⏭️  Skipped updating {date_path}")
-    
-    # Log summary
-    if files_updated:
+        
+        # Automatically update main article list when date file is updated
+        main_path = os.path.join(data_dir, "article_list.json")
+        try:
+            with open(main_path, 'w', encoding='utf-8') as f:
+                f.write(new_json_content)
+            logging.info(f"✅ Auto-updated {main_path} with {len(data)} articles (follows date file)")
+        except Exception as e:
+            logging.error(f"❌ Failed to save main article list: {e}")
+            return False
+        
+        # Log summary
         newspapers = set([article.news_paper_name for article in data])
         logging.info(f"📰 Sources: {', '.join(newspapers)}")
         logging.info(f"📊 Total articles: {len(data)}")
     else:
-        logging.info("ℹ️  No files were updated (data is up to date)")
+        logging.info(f"⏭️  Skipped updating {date_path}")
+        logging.info(f"⏭️  Skipped updating article_list.json (no date file update)")
+        logging.info("ℹ️  No files were updated (data is already up to date)")
     
     return files_updated
 
@@ -196,6 +187,70 @@ def daily_star_opinion_scraper(url):
                     else:
                         logging.warning(f"Scrap failed url: {full_url}")
     if len(data) > 0:
+        return data
+    return None
+
+
+# Daily Star Top Opinion Articles url scrap (Top 2 from main opinion page)
+def daily_star_top_opinion_scraper(url):
+    logging.info(f"Scraping top 2 articles from {url}")
+    soup = get_soup(url)
+    if soup is None:
+        return None
+
+    # Look for the main featured articles on the opinion page
+    # Try multiple selectors to find top articles
+    data = []
+    
+    # Method 1: Look for featured/main articles
+    featured = soup.find('div', {'class': 'featured-article'})
+    if featured:
+        link_elem = featured.find('a')
+        if link_elem:
+            news_link = link_elem.get('href', None)
+            if news_link:
+                full_url = f'https://www.thedailystar.net{news_link}' if not news_link.startswith('http') else news_link
+                logging.info(f"Scraping featured: {full_url}")
+                article = scrap_daily_star_data(full_url)
+                if article is not None:
+                    data.append(article)
+    
+    # Method 2: Get first 2 articles from card-content (different from the regular opinion scraper)
+    cards = soup.find_all('div', {'class': 'card-content'}, limit=2)
+    for card in cards:
+        # Try h3 title
+        link_parent = card.find('h3', {'class': 'title'})
+        if not link_parent:
+            # Try h2 title
+            link_parent = card.find('h2', {'class': 'title'})
+        if not link_parent:
+            # Try h4 title
+            link_parent = card.find('h4')
+            
+        if link_parent is not None:
+            link = link_parent.find('a')
+            if link is not None:
+                news_link = link.get('href', None)
+                if news_link is not None:
+                    full_url = f'https://www.thedailystar.net{news_link}' if not news_link.startswith('http') else news_link
+                    
+                    # Skip if already scraped
+                    if any(article.link == full_url for article in data):
+                        continue
+                        
+                    logging.info(f"Scraping top opinion: {full_url}")
+                    article = scrap_daily_star_data(full_url)
+                    if article is not None:
+                        data.append(article)
+                    else:
+                        logging.warning(f"Scrap failed url: {full_url}")
+                    
+                    # Stop after getting 2 articles
+                    if len(data) >= 2:
+                        break
+    
+    if len(data) > 0:
+        logging.info(f"Successfully scraped {len(data)} top opinion articles")
         return data
     return None
 
@@ -545,6 +600,14 @@ def main():
             data += dailyStarOpinionData
     except Exception as e:
         logging.error(f"Scraping failed for The Daily Star Opinion BD: {e}")
+
+    try:
+        dailyStarTopOpinionScraper = NewsScraper("https://www.thedailystar.net/opinion", daily_star_top_opinion_scraper)
+        dailyStarTopOpinionData = dailyStarTopOpinionScraper.scrap()
+        if dailyStarTopOpinionData is not None:
+            data += dailyStarTopOpinionData
+    except Exception as e:
+        logging.error(f"Scraping failed for The Daily Star Top Opinion: {e}")
 
     try:
         dailyStarEditorialScraper = NewsScraper("https://www.thedailystar.net/views", daily_star_editorial_scraper)
