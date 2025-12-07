@@ -35,7 +35,7 @@ jobs:
       # Run your scraper file
       - name: Run Scraper
         run: |
-          python scrapper.py
+          python main.py
 
       # Commit & Push changes using PAT (IMPORTANT)
       - name: Commit & Push data updates
