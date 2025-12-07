@@ -1,0 +1,35 @@
+name: GitlabSync
+
+on:
+  # Trigger ONLY when Daily Editorial App updates these two folders
+  push:
+    paths:
+      - 'EdData/data/EnToHnWord/**'
+      - 'EdData/data/EnToBnWord/**'
+    branches: [main]
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    # Run always for push (matching paths) or manual
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+    name: Git Repo Sync
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: main
+
+    - name: Sync to GitLab
+      uses: wangchucheng/git-repo-sync@v0.1.0
+      with:
+        target-url: ${{ secrets.TARGET_URL }}
+        target-username: ${{ secrets.TARGET_USERNAME }}
+        target-token: ${{ secrets.TARGET_TOKEN }}  # GitLab Access Token
