@@ -1,9 +1,6 @@
 name: News Scraper
 
 on:
-  schedule:
-    - cron: '15 23 * * *'   # 5:15 AM Bangladesh Time
-    - cron: '0 5 * * *'     # 11:00 AM Bangladesh Time
   workflow_dispatch:
 
 jobs:
